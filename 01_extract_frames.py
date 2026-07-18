@@ -65,12 +65,17 @@ def create_sped_up_video(source_path: str, output_path: str, speed: float) -> No
 
 
 def find_source_video(project_dir: str) -> str:
-    """Find the .mov file, handling macOS unicode spaces in filename."""
-    matches = sorted(Path(project_dir).glob("*.mov"))
+    """Find the source recording (.mov from QuickTime, .webm from the in-app
+    recorder), handling macOS unicode spaces in filename. Deliberately excludes
+    .mp4 — the pipeline writes source_3x.mp4/output.mp4 into the same dir.
+    """
+    matches = sorted(
+        p for ext in ("*.mov", "*.webm") for p in Path(project_dir).glob(ext)
+    )
     if not matches:
-        raise FileNotFoundError(f"No .mov file found in {project_dir}")
+        raise FileNotFoundError(f"No .mov or .webm file found in {project_dir}")
     if len(matches) > 1:
-        print(f"Warning: multiple .mov files found, using {matches[0].name}")
+        print(f"Warning: multiple recordings found, using {matches[0].name}")
     return str(matches[0])
 
 
