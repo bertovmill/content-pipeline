@@ -5,7 +5,7 @@ description: Use when turning a screen recording into multiple content formats â
 
 # Content Pipeline
 
-Converts a raw `.mov` screen recording into a full content package using a 9-stage idempotent Python pipeline. Reference implementation: `/Users/bertomill/setting-up-langchain-tracing-vid/`.
+Converts a raw screen recording (`.mov` from QuickTime, `.webm` from the walkthrough app's /record page) into a full content package using a 9-stage idempotent Python pipeline. Reference implementation: `/Users/bertomill/setting-up-langchain-tracing-vid/`.
 
 For detailed docs on specific stages, see the `reference/` files below.
 
