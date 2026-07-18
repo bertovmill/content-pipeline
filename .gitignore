@@ -1,0 +1,28 @@
+# Secrets — never commit real keys
+.env
+token.json
+client_secret.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Large media inputs (screen recordings, exports)
+*.mov
+*.mp4
+
+# Generated outputs
+frames/
+frames_raw/
+audio/
+cutscenes/
+tmp_compose/
+thumbnail.png
+captions.json
+captions.srt
+article.md
+youtube.md
+recording-context.md
+content-ideas.md
