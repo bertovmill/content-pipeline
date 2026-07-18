@@ -48,11 +48,18 @@ def dedup_frames(raw_dir: str, output_dir: str, threshold: float) -> int:
 
 
 def create_sped_up_video(source_path: str, output_path: str, speed: float) -> None:
-    """Create a speed-multiplied version of the source video (no audio)."""
+    """Create a speed-multiplied version of the source video (no audio),
+    optionally downscaled to config.OUTPUT_HEIGHT."""
     pts_factor = 1.0 / speed
+    vf = f"setpts={pts_factor:.6f}*PTS"
+    target_h = getattr(config, "OUTPUT_HEIGHT", None)
+    if target_h:
+        # Only downscale (never upscale); -2 keeps width even for yuv420p and
+        # preserves the source aspect ratio.
+        vf += f",scale=-2:min(ih\\,{int(target_h)})"
     cmd = [
         "ffmpeg", "-y", "-i", source_path,
-        "-vf", f"setpts={pts_factor:.6f}*PTS",
+        "-vf", vf,
         "-an",
         "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
         output_path,

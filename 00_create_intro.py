@@ -395,12 +395,30 @@ def concat_clips(clips: list[str], main_video: str, output: str) -> None:
     all_inputs = ready_clips + [main_video]
     n = len(all_inputs)
 
+    # The concat filter requires every input to share the same resolution, SAR
+    # and frame rate. Intro clips are rendered at the recording's native size /
+    # fps, which differ from the composed main video, so normalize all inputs to
+    # the main video's resolution (scale-to-fit + pad, no distortion) and a
+    # common fps before concatenating.
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", main_video],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    tw, th = (int(x) for x in probe.split("x"))
+    fps = 30
+
     inputs = []
     for path in all_inputs:
         inputs.extend(["-i", path])
 
-    filter_parts = "".join(f"[{i}:v][{i}:a]" for i in range(n))
-    filter_complex = f"{filter_parts}concat=n={n}:v=1:a=1[outv][outa]"
+    norm = "".join(
+        f"[{i}:v]scale={tw}:{th}:force_original_aspect_ratio=decrease,"
+        f"pad={tw}:{th}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps}[v{i}];"
+        for i in range(n)
+    )
+    concat_srcs = "".join(f"[v{i}][{i}:a]" for i in range(n))
+    filter_complex = f"{norm}{concat_srcs}concat=n={n}:v=1:a=1[outv][outa]"
 
     subprocess.run([
         "ffmpeg", "-y",

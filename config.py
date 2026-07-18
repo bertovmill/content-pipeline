@@ -38,6 +38,12 @@ SIMILARITY_THRESHOLD = 0.95
 SOURCE_SPEED_MULTIPLIER = 3.0
 SPED_UP_VIDEO = os.path.join(PROJECT_DIR, f"source_{int(SOURCE_SPEED_MULTIPLIER)}x.mp4")
 
+# Downscale the footage to this height (px) when building the sped-up source, so
+# every downstream stage (frames, segments, final video, intro concat) inherits
+# it. 1080 = 1080p output — screencasts don't need 4K and files are ~4x smaller
+# and cheaper to serve. Set to None to keep the recording's native resolution.
+OUTPUT_HEIGHT = 1080
+
 CLAUDE_MODEL = "anthropic/claude-sonnet-4.6"
 CAPTION_PROMPT = (
     "You are narrating a YouTube tutorial for developers. Write 2-3 sentences of spoken voiceover "

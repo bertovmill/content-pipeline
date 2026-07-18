@@ -99,7 +99,10 @@ def main():
     captions = load_captions(config.CAPTIONS_FILE)
     already_done = get_captioned_frames(captions)
 
-    todo = [f for f in frame_paths if f not in already_done]
+    todo = [
+        f for f in frame_paths
+        if os.path.relpath(f, config.PROJECT_DIR) not in already_done
+    ]
     print(f"{len(already_done)} already captioned, {len(todo)} remaining.")
 
     for i, frame_path in enumerate(todo, start=1):
