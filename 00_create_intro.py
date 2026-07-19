@@ -11,6 +11,7 @@ Run after Stage 6 (needs youtube.md) and Stage 2 (needs captions.json).
 Final output: output_with_intro.mp4
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -20,7 +21,7 @@ from pathlib import Path
 import anthropic
 import qrcode
 from elevenlabs import ElevenLabs
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 import config
 
@@ -36,17 +37,52 @@ FINAL_OUTPUT = PROJECT_DIR / "output_with_intro.mp4"
 LINKEDIN_URL = "https://www.linkedin.com/in/bertomill/"
 CREATOR_NAME = "Berto Mill"
 
-VIDEO_W, VIDEO_H = 3456, 2234
+# 16:9 to match YouTube 1080p exactly. Width stays 3456 so the font sizes and
+# horizontal layout below need no retuning; only the height changes (was 2234 =
+# 3:2, which got pillarboxed with black side bars when concatenated onto the
+# 1920x1080 main video).
+VIDEO_W, VIDEO_H = 3456, 1944
 FADE = 0.5
 
-BG_DARK   = "#0d0d1a"
-ACCENT    = "#4f46e5"
-WHITE     = "#ffffff"
-SUBTEXT   = "#9b9bc0"
-HIGHLIGHT = "#818cf8"
+WHITE = "#ffffff"
+
+# Per-video look. Each video picks one dark theme + one gradient pattern,
+# chosen deterministically from a hash of its title — so consecutive videos
+# don't all share the same indigo background, but a given title always renders
+# the same way (Stage 0 stays idempotent across re-runs).
+THEMES = [
+    {"bg": (13, 13, 26), "bg2": (30, 27, 75), "accent": "#4f46e5", "highlight": "#818cf8", "subtext": "#9b9bc0"},  # indigo
+    {"bg": (8, 20, 24),  "bg2": (12, 48, 52), "accent": "#0ea5a4", "highlight": "#5eead4", "subtext": "#8fb3b0"},  # teal
+    {"bg": (20, 12, 28), "bg2": (52, 20, 66), "accent": "#a855f7", "highlight": "#d8b4fe", "subtext": "#b39bc8"},  # violet
+    {"bg": (9, 14, 30),  "bg2": (17, 32, 74), "accent": "#3b82f6", "highlight": "#93c5fd", "subtext": "#94a3c8"},  # blue
+    {"bg": (26, 12, 14), "bg2": (66, 22, 26), "accent": "#ef4444", "highlight": "#fca5a5", "subtext": "#c09b9b"},  # crimson
+    {"bg": (24, 15, 8),  "bg2": (64, 34, 12), "accent": "#f97316", "highlight": "#fdba74", "subtext": "#c0ac9b"},  # amber
+    {"bg": (8, 22, 18),  "bg2": (12, 54, 38), "accent": "#22c55e", "highlight": "#86efac", "subtext": "#9bc0a8"},  # emerald
+    {"bg": (10, 18, 30), "bg2": (14, 44, 74), "accent": "#06b6d4", "highlight": "#67e8f9", "subtext": "#9bb8c8"},  # cyan
+]
+PATTERNS = ["vertical", "diagonal", "radial"]
+
+# Active theme — overwritten by configure_theme(); defaults to the original look.
+ACCENT    = THEMES[0]["accent"]
+HIGHLIGHT = THEMES[0]["highlight"]
+SUBTEXT   = THEMES[0]["subtext"]
+_BG       = THEMES[0]["bg"]
+_BG2      = THEMES[0]["bg2"]
+_PATTERN  = "vertical"
 
 FONT_SF = "/System/Library/Fonts/SFNS.ttf"
 FONT_HV = "/System/Library/Fonts/Helvetica.ttc"
+
+
+def configure_theme(title: str) -> str:
+    """Pick a deterministic dark theme + gradient pattern from the title."""
+    global ACCENT, HIGHLIGHT, SUBTEXT, _BG, _BG2, _PATTERN
+    seed = int(hashlib.sha256(title.encode("utf-8")).hexdigest(), 16)
+    theme = THEMES[seed % len(THEMES)]
+    _PATTERN = PATTERNS[(seed // len(THEMES)) % len(PATTERNS)]
+    ACCENT, HIGHLIGHT, SUBTEXT = theme["accent"], theme["highlight"], theme["subtext"]
+    _BG, _BG2 = theme["bg"], theme["bg2"]
+    return f"{theme['accent']} · {_PATTERN}"
 
 
 # ---------------------------------------------------------------------------
@@ -77,14 +113,26 @@ def _wrap(text: str, draw: ImageDraw.Draw, font, max_width: int) -> list[str]:
 
 
 def _gradient_bg(w: int, h: int) -> Image.Image:
-    img = Image.new("RGB", (w, h), BG_DARK)
-    draw = ImageDraw.Draw(img)
-    for i in range(h):
-        t = i / h
-        draw.line([(0, i), (w, i)], fill=(
-            int(13 + t * 8), int(13 + t * 5), int(26 + t * 20)
-        ))
-    return img
+    """Blend the active theme's two dark tones using the active pattern.
+
+    A grayscale mask (0 = base tone, 255 = glow tone) is built cheaply from
+    Pillow's built-in gradients, then used to composite the two colors — no
+    per-pixel Python loops, so it stays fast at 3456px wide.
+    """
+    base = Image.new("RGB", (w, h), _BG)
+    glow = Image.new("RGB", (w, h), _BG2)
+    if _PATTERN == "radial":
+        # Bright glow in the center fading to the base tone at the edges.
+        mask = ImageOps.invert(Image.radial_gradient("L")).resize((w, h), Image.BILINEAR)
+    elif _PATTERN == "diagonal":
+        # Average a vertical and a horizontal ramp → clean top-left→bottom-right
+        # diagonal with no rotation/fill artifacts.
+        vert = Image.linear_gradient("L")
+        horiz = vert.transpose(Image.ROTATE_90)
+        mask = Image.blend(vert, horiz, 0.5).resize((w, h), Image.BILINEAR)
+    else:  # vertical: darker at top, lighter at bottom (the original look)
+        mask = Image.linear_gradient("L").resize((w, h), Image.BILINEAR)
+    return Image.composite(glow, base, mask)
 
 
 def _get_duration(path: str) -> float:
@@ -453,6 +501,9 @@ def main():
 
     title  = read_title()
     print(f"Title: {title}")
+
+    look = configure_theme(title)
+    print(f"Theme: {look}")
 
     print("Extracting TOC topics with Claude...")
     topics = extract_toc_topics()
