@@ -26,3 +26,16 @@ article.md
 youtube.md
 recording-context.md
 content-ideas.md
+node_modules
+.next
+.next-main
+.next-preview
+.env.local
+.env.*.local
+venv
+.venv
+.DS_Store
+out
+dist
+.turbo
+!.env.example

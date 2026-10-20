@@ -388,19 +388,45 @@ def generate_branded_voiceover(title: str, topics: list[str]) -> str:
 # Assembly
 # ---------------------------------------------------------------------------
 
+def _video_dims(path: str) -> tuple[int, int]:
+    result = subprocess.run([
+        "ffprobe", "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height",
+        "-of", "csv=s=x:p=0", path,
+    ], capture_output=True, text=True, check=True)
+    w, h = result.stdout.strip().split("x")
+    return int(w), int(h)
+
+
 def concat_clips(clips: list[str], main_video: str, output: str) -> None:
-    """Concatenate intro clips (must already have audio) + main video."""
+    """Concatenate intro clips (must already have audio) + main video.
+
+    Intro clips are rendered at a fixed canvas size (VIDEO_W/VIDEO_H) that may
+    not match the main video's actual resolution, so each intro clip is
+    scaled+padded to the main video's dimensions before concatenation.
+    """
     # Ensure all clips have audio tracks
     ready_clips = [_add_silent_audio(c) for c in clips]
     all_inputs = ready_clips + [main_video]
     n = len(all_inputs)
 
+    main_w, main_h = _video_dims(main_video)
+
     inputs = []
     for path in all_inputs:
         inputs.extend(["-i", path])
 
-    filter_parts = "".join(f"[{i}:v][{i}:a]" for i in range(n))
-    filter_complex = f"{filter_parts}concat=n={n}:v=1:a=1[outv][outa]"
+    filter_parts = []
+    for i in range(n):
+        if i < len(ready_clips):
+            filter_parts.append(
+                f"[{i}:v]scale={main_w}:{main_h}:force_original_aspect_ratio=decrease,"
+                f"pad={main_w}:{main_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]"
+            )
+        else:
+            filter_parts.append(f"[{i}:v]setsar=1[v{i}]")
+    concat_inputs = "".join(f"[v{i}][{i}:a]" for i in range(n))
+    filter_complex = f"{';'.join(filter_parts)};{concat_inputs}concat=n={n}:v=1:a=1[outv][outa]"
 
     subprocess.run([
         "ffmpeg", "-y",
